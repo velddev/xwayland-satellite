@@ -16,7 +16,7 @@ use wayland_protocols::xdg::{
 };
 use wayland_server::Resource;
 use wayland_server::protocol::{wl_output, wl_pointer};
-use xcb::{Xid, x};
+use xcb::{BaseEvent, Xid, x};
 use xwayland_satellite as xwls;
 use xwayland_satellite::xstate::{MoveResizeDirection, WmSizeHintsFlags, WmState};
 use xwls::timespec_from_millis;
@@ -2573,4 +2573,41 @@ fn client_init_resize() {
         "Got wrong resizing edge: {:?}",
         data.resizing
     );
+}
+
+#[test]
+fn ignored_position_request_gets_synthetic_configure_notify() {
+    let mut f = Fixture::new();
+    let mut connection = Connection::new(&f.display);
+
+    let window = connection.new_window(connection.root, 0, 0, 20, 20, false);
+    f.map_as_toplevel(&mut connection, window);
+    connection
+        .send_and_check_request(&x::ChangeWindowAttributes {
+            window,
+            value_list: &[x::Cw::EventMask(x::EventMask::STRUCTURE_NOTIFY)],
+        })
+        .unwrap();
+
+    // The position gets dropped, so X itself won't send a ConfigureNotify.
+    connection
+        .send_and_check_request(&x::ConfigureWindow {
+            window,
+            value_list: &[x::ConfigWindow::X(50), x::ConfigWindow::Y(60)],
+        })
+        .unwrap();
+
+    match connection.await_event() {
+        xcb::Event::X(x::Event::ConfigureNotify(e)) => {
+            assert!(e.is_from_send_event(), "ConfigureNotify was not synthetic");
+            assert_eq!(e.window(), window);
+            assert_eq!((e.x(), e.y(), e.width(), e.height()), (0, 0, 20, 20));
+        }
+        other => panic!("unexpected event {other:?}"),
+    }
+
+    let geometry = connection.get_reply(&x::GetGeometry {
+        drawable: x::Drawable::Window(window),
+    });
+    assert_eq!((geometry.x(), geometry.y()), (0, 0));
 }

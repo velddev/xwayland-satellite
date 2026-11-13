@@ -343,6 +343,7 @@ impl XState {
 
         let mut handled = false;
         let mut ignored_windows = Vec::new();
+        let mut synthetic_configures = Vec::new();
         while let Some(event) = self.connection.poll_for_event().unwrap() {
             handled = true;
             trace!("x11 event: {event:?}");
@@ -486,8 +487,11 @@ impl XState {
 
                     let mut list = Vec::new();
                     let mask = e.value_mask();
+                    let wants_position =
+                        mask.intersects(x::ConfigWindowMask::X | x::ConfigWindowMask::Y);
+                    let can_change_position = server_state.can_change_position(e.window());
 
-                    if server_state.can_change_position(e.window()) {
+                    if can_change_position {
                         if mask.contains(x::ConfigWindowMask::X) {
                             list.push(x::ConfigWindow::X(e.x().into()));
                         }
@@ -502,12 +506,24 @@ impl XState {
                         list.push(x::ConfigWindow::Height(e.height().into()));
                     }
 
-                    unwrap_or_skip_bad_window_cont!(self.connection.send_and_check_request(
-                        &x::ConfigureWindow {
-                            window: e.window(),
-                            value_list: &list,
-                        }
-                    ));
+                    let configure = self.connection.send_request_checked(&x::ConfigureWindow {
+                        window: e.window(),
+                        value_list: &list,
+                    });
+
+                    if wants_position && !can_change_position {
+                        // Sent behind the ConfigureWindow, so one round trip covers both.
+                        let geometry = self.connection.send_request(&x::GetGeometry {
+                            drawable: x::Drawable::Window(e.window()),
+                        });
+                        let geometry = self.connection.wait_for_reply(geometry);
+                        unwrap_or_skip_bad_window_cont!(self.connection.check_request(configure));
+                        let geometry = unwrap_or_skip_bad_window_cont!(geometry);
+                        synthetic_configures
+                            .push(self.send_synthetic_configure(e.window(), &geometry));
+                    } else {
+                        unwrap_or_skip_bad_window_cont!(self.connection.check_request(configure));
+                    }
                 }
                 xcb::Event::X(x::Event::ClientMessage(e)) => {
                     self.handle_client_message(e, server_state);
@@ -524,6 +540,11 @@ impl XState {
             }
 
             server_state.run();
+        }
+
+        // Checked once per batch instead of a round trip per event.
+        for cookie in synthetic_configures {
+            unwrap_or_skip_bad_window_cont!(self.connection.check_request(cookie));
         }
         handled
     }
@@ -621,6 +642,33 @@ impl XState {
                 get_atom_name(&self.connection, t)
             ),
         }
+    }
+
+    /// Answers a configure request we didn't honour with the window's current geometry.
+    /// https://tronche.com/gui/x/icccm/sec-4.html#s-4.1.5
+    fn send_synthetic_configure(
+        &self,
+        window: x::Window,
+        geometry: &x::GetGeometryReply,
+    ) -> xcb::VoidCookieChecked {
+        // We don't reparent, so these are already root coordinates.
+        let event = x::ConfigureNotifyEvent::new(
+            window,
+            window,
+            x::Window::none(),
+            geometry.x(),
+            geometry.y(),
+            geometry.width(),
+            geometry.height(),
+            geometry.border_width(),
+            false,
+        );
+        self.connection.send_request_checked(&x::SendEvent {
+            destination: x::SendEventDest::Window(window),
+            propagate: false,
+            event_mask: x::EventMask::STRUCTURE_NOTIFY,
+            event: &event,
+        })
     }
 
     fn handle_window_properties(
