@@ -163,6 +163,7 @@ struct FakeXConnection {
     send_take_focus_window: Option<Window>,
     windows: HashMap<Window, WindowData>,
     set_window_dims_counter: usize,
+    set_fullscreen_counter: usize,
 }
 
 impl FakeXConnection {
@@ -212,6 +213,7 @@ impl super::XConnection for FakeXConnection {
     #[track_caller]
     fn set_fullscreen(&mut self, window: xcb::x::Window, fullscreen: bool) {
         self.window_mut(window).fullscreen = fullscreen;
+        self.set_fullscreen_counter += 1;
     }
 
     #[track_caller]
@@ -1332,6 +1334,29 @@ fn fullscreen() {
             .states
             .contains(&xdg_toplevel::State::Fullscreen)
     );
+}
+
+#[test]
+fn fullscreen_request_answered() {
+    let (mut f, comp) = TestFixture::new_with_compositor();
+    let win = Window::new(1);
+    f.create_toplevel(&comp, win);
+
+    let mut check = |ignore, expected| {
+        f.testwl.ignore_set_fullscreen(ignore);
+        let before = f.connection().set_fullscreen_counter;
+        f.satellite.set_fullscreen(win, SetState::Add);
+        f.run();
+        f.run();
+
+        // Every request gets an answer, even if the fullscreen state didn't change.
+        assert_eq!(f.connection().set_fullscreen_counter, before + 1);
+        assert_eq!(f.connection().window(win).fullscreen, expected);
+    };
+
+    check(true, false);
+    check(false, true);
+    check(false, true);
 }
 
 #[test]

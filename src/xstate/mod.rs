@@ -1342,6 +1342,46 @@ impl RealConnection {
     fn root_window(&self) -> x::Window {
         self.connection.get_setup().roots().next().unwrap().root()
     }
+
+    /// Add or remove `atoms` from a window's `_NET_WM_STATE`, leaving every other state
+    /// already on the property alone.
+    fn update_net_wm_state(&mut self, window: x::Window, atoms: &[x::Atom], present: bool) {
+        let cookie = self.connection.send_request(&x::GetProperty {
+            delete: false,
+            window,
+            property: self.atoms.net_wm_state,
+            r#type: x::ATOM_ATOM,
+            long_offset: 0,
+            long_length: 32,
+        });
+        let reply = match self.connection.wait_for_reply(cookie) {
+            Ok(reply) => reply,
+            Err(e) => {
+                warn!("Failed to read _NET_WM_STATE of {window:?} ({e})");
+                return;
+            }
+        };
+
+        let mut states: Vec<x::Atom> = if reply.r#type() == x::ATOM_ATOM {
+            reply.value::<x::Atom>().to_vec()
+        } else {
+            Vec::new()
+        };
+        states.retain(|state| !atoms.contains(state));
+        if present {
+            states.extend_from_slice(atoms);
+        }
+
+        if let Err(e) = self.connection.send_and_check_request(&x::ChangeProperty {
+            mode: x::PropMode::Replace,
+            window,
+            property: self.atoms.net_wm_state,
+            r#type: x::ATOM_ATOM,
+            data: &states,
+        }) {
+            warn!("Failed to set _NET_WM_STATE on {window:?} ({e})");
+        }
+    }
 }
 
 impl XConnection for RealConnection {
@@ -1368,24 +1408,8 @@ impl XConnection for RealConnection {
     }
 
     fn set_fullscreen(&mut self, window: x::Window, fullscreen: bool) {
-        let data = if fullscreen {
-            std::slice::from_ref(&self.atoms.wm_fullscreen)
-        } else {
-            &[]
-        };
-
-        if let Err(e) = self
-            .connection
-            .send_and_check_request(&x::ChangeProperty::<x::Atom> {
-                mode: x::PropMode::Replace,
-                window,
-                property: self.atoms.net_wm_state,
-                r#type: x::ATOM_ATOM,
-                data,
-            })
-        {
-            warn!("Failed to set fullscreen state on {window:?} ({e})");
-        }
+        let fullscreen_atom = self.atoms.wm_fullscreen;
+        self.update_net_wm_state(window, &[fullscreen_atom], fullscreen);
     }
 
     fn focus_window(&mut self, window: x::Window, output_name: Option<String>) {

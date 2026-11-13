@@ -286,6 +286,7 @@ struct State {
     xdg_activation: Option<XdgActivationV1>,
     valid_tokens: HashSet<String>,
     token_counter: u32,
+    ignore_set_fullscreen: bool,
 }
 
 impl Default for State {
@@ -318,6 +319,7 @@ impl Default for State {
             xdg_activation: None,
             valid_tokens: HashSet::new(),
             token_counter: 0,
+            ignore_set_fullscreen: false,
         }
     }
 }
@@ -966,6 +968,11 @@ impl Server {
         self.display.flush_clients().unwrap();
     }
 
+    /// Answer `set_fullscreen` with a configure that doesn't make the toplevel fullscreen.
+    pub fn ignore_set_fullscreen(&mut self, ignore: bool) {
+        self.state.ignore_set_fullscreen = ignore;
+    }
+
     pub fn disable_decorations_global(&self) {
         self.display
             .handle()
@@ -1578,7 +1585,9 @@ impl Dispatch<XdgToplevel, SurfaceId> for State {
                 let Some(SurfaceRole::Toplevel(toplevel)) = &mut data.role else {
                     unreachable!();
                 };
-                toplevel.states.push(xdg_toplevel::State::Fullscreen);
+                if !state.ignore_set_fullscreen {
+                    toplevel.states.push(xdg_toplevel::State::Fullscreen);
+                }
                 let states = toplevel.states.clone();
                 state.configure_toplevel(*surface_id, 100, 100, states);
             }
