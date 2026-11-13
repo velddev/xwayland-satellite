@@ -310,7 +310,7 @@ impl<S: X11Selection> Dispatch<WlShmPool, client::wl_shm_pool::WlShmPool> for In
             }
             Request::<WlShmPool>::Destroy => {
                 c_pool.destroy();
-                state.queue.flush().unwrap();
+                state.flush_queue();
             }
             other => warn!("unhandled shmpool request: {other:?}"),
         }
