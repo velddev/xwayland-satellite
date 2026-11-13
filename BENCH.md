@@ -65,6 +65,60 @@ Wayland-driven throughput benchmarks are paced.
 
 ## Results
 
+### Final branch tips (second run, 2026-11-13)
+
+`bench/run.sh -n 20 -s 5 main=b424e5e main-again=b424e5e stable-primary=17746c1
+stable-primary-17c0827=17c0827 configure-notify=0ecb0fb fullscreen-state=fb0ed3b`. configure-notify
+0ecb0fb is the pipelined version of the fix (one wait per ignored position request, SendEvent
+cookies checked once per event batch); 17746c1 is a behaviour-neutral restyle of 17c0827. Full
+tables: `bench/results/2026-11-13-final-tips/all/summary.md`.
+
+Change of the median vs main, wall / satellite CPU (bold: whole 95% CI beyond the A/A floor and 2%):
+
+| benchmark | ops | main: wall, sat CPU (us/op) | stable-primary 17746c1 | stable-primary 17c0827 | configure-notify 0ecb0fb | fullscreen-state fb0ed3b | A/A (main-again) |
+|---|---|---|---|---|---|---|---|
+| configure_position | 5000 | 12.1, 7.0 | -1.2% / +0.6% | +0.3% / +0.3% | **+53% / +33% slower** | -0.9% / +0.0% | +2.3% / +1.2% |
+| configure_position_sync | 1000 | 44.1, 22.5 | -4.0% / -4.9% | +2.0% / -1.2% | +8.8% / +2.5% | -3.1% / -3.5% | -1.1% / -2.7% |
+| configure_position_size | 1000 | 67.2, 23.1 | -5.7% / -3.9% | -1.2% / +2.3% | +13.4% / +14.8% (no panics) | -6.5% / -4.4% | -3.5% / +0.1% |
+| fullscreen_toggle | 2000 | 26.0, 15.1 | +3.0% / +5.6% | +5.8% / +7.8% | +6.0% / +6.1% | **+39% / +37% slower** | +5.4% / +6.9% |
+| fullscreen_toggle_wait | 500 | 39.8, 27.3 | -2.0% / -0.9% | -0.3% / +0.1% | -2.2% / -1.1% | **+29% / +20% slower** | -0.4% / +0.5% |
+| fullscreen_redundant | 500 | 102.1, 57.0 | -1.3% / -1.0% | +5.1% / +3.7% | +2.3% / +2.2% | +10.7% / +8.7% | -3.5% / -3.3% |
+| barrier_only | 500 | 78.4, 42.7 | -5.0% / -6.0% | +2.8% / +1.4% | +4.6% / +5.3% | +6.0% / +5.5% | -0.7% / -0.5% |
+| focus_m2 | 2000 | 48.3, 24.3 | -10.8% / -7.7% | -14.1% / -8.1% | -11.3% / -8.9% | -18.6% / -14.3% | -0.6% / +1.2% |
+| focus_m50 | 2000 | 43.1, 22.5 | -8.7% / -6.0% | +14.9% / +12.7% | +8.7% / +5.1% | -5.9% / -5.0% | +5.7% / +0.3% |
+| focus_m200 | 2000 | 39.0, 21.1 | +12.2% / +9.7% | +11.4% / +10.3% | +2.1% / -0.9% | +5.6% / +2.2% | +6.8% / +3.8% |
+| focus_m3_u1000 | 2000 | 44.9, 23.1 | -13.7% / -7.0% | -10.6% / -4.3% | -11.7% / -8.2% | -2.0% / +1.1% | -2.3% / -4.1% |
+| output_enter_m3 | 2000 | 76.7, 37.1 | **-74% / -71% faster** | **-72% / -68% faster** | -4.3% / -5.0% | -15.2% / -12.5% | -14.9% / -13.6% |
+| output_enter_m200 | 2000 | 71.9, 32.8 | **-72% / -67% faster** | **-74% / -67% faster** | -4.4% / +1.0% | -14.4% / -7.9% | -10.5% / -4.9% |
+| output_enter_m3_u1000 | 2000 | 100.7, 41.6 | **-69% / -64% faster** | **-69% / -64% faster** | -7.0% / -9.6% | -6.5% / +0.5% | -5.9% / -12.8% |
+| map_churn | 200 | 302.5, 164.7 | -1.9% / +0.6% | +2.1% / +2.2% | +1.2% / +1.1% | +2.4% / +0.4% | +2.0% / +0.7% |
+
+Suite (`cargo test --release`, median of 5, s): main 10.46, main-again 10.54, 17746c1 11.39,
+17c0827 11.27, 0ecb0fb 10.63, fb0ed3b 10.48 (differences follow the tests each branch adds).
+
+- **configure-notify 0ecb0fb**: no panics in 20 rounds (c45fab6 panicked in 20 of 20).
+  `configure_position_sync` (+8.8% wall, CI -3..+17%) and `configure_position_size` (+13% / +15%,
+  CIs +5..+25% / +8..+24% against floors of 10% / 8%) are within the A/A floor. A cost remains only
+  in the 5000-request burst: +6.4 us wall, +2.3 us satellite CPU, +4.0 us Xwayland CPU per ignored
+  request (c45fab6: +31 / +14 / +18 us). That is the GetGeometry reply plus the SendEvent and its
+  delivery, with no extra round trip; removing it would need the geometry from satellite's own
+  state instead of GetGeometry. `configure_position_size` still pays for a synthetic event that X
+  makes redundant (it already sends a real ConfigureNotify when the size changes).
+- **stable-primary 17746c1 matches 17c0827**: compared directly
+  (`bench/results/2026-11-13-final-tips/stable-primary-vs-17c0827/`), no benchmark differs beyond
+  noise (largest: focus_m50 -21% / -17%, where main and main-again themselves differ by 8-13%;
+  output_enter -6..+7%).
+- **fullscreen-state fb0ed3b**: unchanged, same cost as in the first run (+10-11 us per
+  `_NET_WM_STATE` change).
+- **Panics outside configure-notify**: the pre-existing `flush().unwrap()` at
+  `src/server/dispatch.rs:313` fired twice in `output_enter_m3`, once on 17746c1 and once on
+  17c0827 (1 of 20 processes each; main 0 of 40 in this run). A dedicated 40-round rerun of the
+  output_enter benchmarks (`bench/results/2026-11-13-final-tips/output-enter-panics/`) panicked 0
+  of 40 times on both main and 17746c1, so the difference isn't significant. Its trigger is the
+  bench's pacing (64 enters between testwl dispatches). The fix is the same: handle WouldBlock there.
+
+### First run (2026-11-13, before the configure-notify fix)
+
 Run on 2026-11-13: `bench/run.sh -n 20 -s 5 main=b424e5e main-again=b424e5e
 stable-primary=17c0827 stable-primary-1st=d9cd02b configure-notify=c45fab6 fullscreen-state=fb0ed3b`
 (20 interleaved rounds, rotating order; each round's sample is the median of 5 runs after a
@@ -101,7 +155,7 @@ Full `cargo test --release` suite, 5 runs per tree (median s): main 10.10, main-
 stable-primary 11.19, stable-primary-1st 10.34, configure-notify 10.60, fullscreen-state 10.85.
 The differences track the integration tests each branch adds (with their sleeps), not runtime cost.
 
-### Noise
+### Noise (first run)
 
 Wall time across rounds varies a lot on this machine (other agents were compiling Rust in
 parallel; load average 4-10): p10-p90 spans are ±10-30% of the median for the latency-bound
@@ -112,7 +166,7 @@ main-again / stable-primary, `bench/results/2026-11-13/focus/`) again found no d
 `focus_*` (all within ±9%, floors 14-32%): the stable-primary window scan is below the ~3 us/op
 these benchmarks can resolve.
 
-### Findings
+### Findings (first run)
 
 **configure-notify** is the one real cost. Every position request on a mapped toplevel now takes
 three synchronous round trips to Xwayland instead of one: the (often empty) ConfigureWindow,

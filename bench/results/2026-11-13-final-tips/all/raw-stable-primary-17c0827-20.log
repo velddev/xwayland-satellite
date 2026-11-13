@@ -1,0 +1,117 @@
+
+running 15 tests
+test barrier_only ... BENCH	barrier_only	500	1	81731	45534	49119	36130	3.67
+BENCH	barrier_only	500	2	79530	43143	50017	33160	3.62
+BENCH	barrier_only	500	3	81100	43123	49466	33357	3.51
+BENCH	barrier_only	500	4	82857	45441	50966	35849	3.52
+BENCH	barrier_only	500	5	81466	44546	49813	33479	3.56
+BENCHMED	barrier_only	500	81466	44546	49813	33479	3.56
+ok
+test configure_position ... BENCH	configure_position	5000	1	13161	6908	6811	133	1.03
+BENCH	configure_position	5000	2	13305	7135	7121	137	1.04
+BENCH	configure_position	5000	3	13144	7227	6967	131	1.03
+BENCH	configure_position	5000	4	13007	6387	6205	133	1.01
+BENCH	configure_position	5000	5	13818	7279	7067	127	1.04
+BENCHMED	configure_position	5000	13161	7135	6967	133	1.03
+ok
+test configure_position_size ... BENCH	configure_position_size	1000	1	69828	23984	54897	27056	1.52
+BENCH	configure_position_size	1000	2	66449	23191	53720	26807	1.52
+BENCH	configure_position_size	1000	3	70880	24806	56308	28920	1.56
+BENCH	configure_position_size	1000	4	70673	24188	55019	28094	1.53
+BENCH	configure_position_size	1000	5	69311	24462	55054	28646	1.57
+BENCHMED	configure_position_size	1000	69828	24188	55019	28094	1.53
+ok
+test configure_position_sync ... BENCH	configure_position_sync	1000	1	47170	22773	23331	15668	3.02
+BENCH	configure_position_sync	1000	2	45392	22322	22965	15808	3.02
+BENCH	configure_position_sync	1000	3	45120	22433	22862	15862	3.02
+BENCH	configure_position_sync	1000	4	42147	21453	21741	14424	3.02
+BENCH	configure_position_sync	1000	5	44449	22145	22932	14787	3.03
+BENCHMED	configure_position_sync	1000	45120	22322	22932	15668	3.02
+ok
+test focus_m2 ... BENCH	focus_m2	2000	1	42084	21806	22993	7136	3.03
+BENCH	focus_m2	2000	2	41749	21460	22881	6927	3.03
+BENCH	focus_m2	2000	3	41141	21885	23466	7090	3.03
+BENCH	focus_m2	2000	4	40896	21503	22716	6990	3.03
+BENCH	focus_m2	2000	5	40279	21465	23302	6910	3.02
+BENCHMED	focus_m2	2000	41141	21503	22993	6990	3.03
+ok
+test focus_m200 ... BENCH	focus_m200	2000	1	44694	23069	24142	7429	3.04
+BENCH	focus_m200	2000	2	44455	22877	24040	7331	3.04
+BENCH	focus_m200	2000	3	44053	23033	23911	7358	3.05
+BENCH	focus_m200	2000	4	50287	24945	25818	8060	3.04
+BENCH	focus_m200	2000	5	54583	26204	26750	8322	3.03
+BENCHMED	focus_m200	2000	44694	23069	24142	7429	3.04
+ok
+test focus_m3_u1000 ... BENCH	focus_m3_u1000	2000	1	43190	22792	23671	7132	3.03
+BENCH	focus_m3_u1000	2000	2	42514	22619	23173	7082	3.03
+BENCH	focus_m3_u1000	2000	3	43452	22246	22999	6890	3.02
+BENCH	focus_m3_u1000	2000	4	37741	21036	22023	6567	3.02
+BENCH	focus_m3_u1000	2000	5	42171	22238	22805	7014	3.03
+BENCHMED	focus_m3_u1000	2000	42514	22246	22999	7014	3.03
+ok
+test focus_m50 ... BENCH	focus_m50	2000	1	42282	22107	23054	7121	3.02
+BENCH	focus_m50	2000	2	44409	22492	23508	7248	3.03
+BENCH	focus_m50	2000	3	44656	22029	23161	7213	3.02
+BENCH	focus_m50	2000	4	42108	21931	22930	7110	3.03
+BENCH	focus_m50	2000	5	43365	22405	23568	7211	3.03
+BENCHMED	focus_m50	2000	43365	22107	23161	7211	3.03
+ok
+test fullscreen_redundant ... BENCH	fullscreen_redundant	500	1	104818	54503	62181	39341	4.68
+BENCH	fullscreen_redundant	500	2	111313	58592	67238	42777	4.68
+BENCH	fullscreen_redundant	500	3	105456	57135	66020	42367	4.71
+BENCH	fullscreen_redundant	500	4	105730	56986	65398	41418	4.64
+BENCH	fullscreen_redundant	500	5	105465	56862	65298	41471	4.70
+BENCHMED	fullscreen_redundant	500	105465	56986	65398	41471	4.68
+ok
+test fullscreen_toggle ... BENCH	fullscreen_toggle	2000	1	28910	16664	15244	11433	1.75
+BENCH	fullscreen_toggle	2000	2	28006	16351	15228	11385	1.88
+BENCH	fullscreen_toggle	2000	3	27488	15659	14522	10926	1.65
+BENCH	fullscreen_toggle	2000	4	29361	16428	15182	11407	1.73
+BENCH	fullscreen_toggle	2000	5	28861	16920	15192	11329	1.76
+BENCHMED	fullscreen_toggle	2000	28861	16428	15192	11385	1.75
+ok
+test fullscreen_toggle_wait ... BENCH	fullscreen_toggle_wait	500	1	39025	26793	18692	16386	2.53
+BENCH	fullscreen_toggle_wait	500	2	37435	26508	18758	16052	2.56
+BENCH	fullscreen_toggle_wait	500	3	40778	27177	19008	16738	2.58
+BENCH	fullscreen_toggle_wait	500	4	45701	29037	20071	17936	2.64
+BENCH	fullscreen_toggle_wait	500	5	38667	26879	19246	16500	2.48
+BENCHMED	fullscreen_toggle_wait	500	39025	26879	19008	16500	2.56
+ok
+test map_churn ... BENCH	map_churn	200	1	371994	183567	207406	81948	23.84
+BENCH	map_churn	200	2	345852	181622	203163	79279	23.64
+BENCH	map_churn	200	3	323536	176152	196974	76612	23.68
+BENCH	map_churn	200	4	337504	178588	200569	79279	23.66
+BENCH	map_churn	200	5	330219	177947	197829	78219	23.54
+BENCHMED	map_churn	200	337504	178588	200569	79279	23.66
+ok
+test output_enter_m200 ... BENCH	output_enter_m200	2000	1	18756	10763	11270	8045	1.06
+BENCH	output_enter_m200	2000	2	21789	11620	13313	8171	1.07
+BENCH	output_enter_m200	2000	3	23337	12094	12768	8202	1.09
+BENCH	output_enter_m200	2000	4	23740	12378	14016	8620	1.08
+BENCH	output_enter_m200	2000	5	26108	12909	14552	8411	1.10
+BENCHMED	output_enter_m200	2000	23337	12094	13313	8202	1.08
+ok
+test output_enter_m3 ... 
+thread 'xwls-satellite' (2496934) panicked at src/server/dispatch.rs:313:37:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 11, kind: WouldBlock, message: "Resource temporarily unavailable" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'output_enter_m3' (2496933) panicked at tests/bench.rs:378:27:
+X error: Connection(Connection)
+ 2026-11-13T15:24:45.357Z ERROR bench > main thread panicked
+FAILED
+test output_enter_m3_u1000 ... BENCH	output_enter_m3_u1000	2000	1	32499	15620	21129	8794	2.03
+BENCH	output_enter_m3_u1000	2000	2	33307	16114	21401	8649	2.04
+BENCH	output_enter_m3_u1000	2000	3	32706	15449	21577	8550	2.04
+BENCH	output_enter_m3_u1000	2000	4	32687	15672	21605	8539	2.03
+BENCH	output_enter_m3_u1000	2000	5	32296	15306	21072	8693	2.03
+BENCHMED	output_enter_m3_u1000	2000	32687	15620	21401	8649	2.03
+ok
+
+failures:
+
+failures:
+    output_enter_m3
+
+test result: FAILED. 14 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.10s
+
