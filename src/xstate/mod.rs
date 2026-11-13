@@ -650,6 +650,10 @@ impl XState {
             server_state.set_take_focus(window, protocols.contains(&self.atoms.wm_take_focus));
         }
 
+        if self.has_wine_hwnd_style(window)? {
+            server_state.set_wine_window(window);
+        }
+
         let motif_wm_hints = self.get_motif_wm_hints(window)?;
         if let Some(decorations) = motif_wm_hints.as_ref().and_then(|m| m.decorations) {
             server_state.set_win_decorations(window, decorations);
@@ -768,6 +772,14 @@ impl XState {
         PropertyCookieWrapper::new(&self.connection, cookie).resolve(resolver)
     }
 
+    /// Proton's Wine sets _WINE_HWND_STYLE on its windows.
+    fn has_wine_hwnd_style(&self, window: x::Window) -> XResult<bool> {
+        let cookie = self.get_property_cookie(window, self.atoms.wine_hwnd_style, x::ATOM_ANY, 0);
+        PropertyCookieWrapper::new(&self.connection, cookie)
+            .resolve(|_| ())
+            .map(|r| r.is_some())
+    }
+
     fn get_wm_size_hints(&self, window: x::Window) -> XResult<Option<WmNormalHints>> {
         let cookie =
             self.get_property_cookie(window, x::ATOM_WM_NORMAL_HINTS, x::ATOM_WM_SIZE_HINTS, 9);
@@ -876,6 +888,9 @@ impl XState {
                 let class = unwrap_or_skip_bad_window_ret!(self.get_wm_class(window)).unwrap();
                 server_state.set_win_class(window, class);
             }
+            x if x == self.atoms.wine_hwnd_style => {
+                server_state.set_wine_window(window);
+            }
             x if x == self.atoms.motif_wm_hints => {
                 let motif_hints =
                     unwrap_or_skip_bad_window_ret!(self.get_motif_wm_hints(window)).unwrap();
@@ -931,6 +946,7 @@ xcb::atoms_struct! {
         primary => b"PRIMARY" only_if_exists = false,
         primary_targets => b"_primary_targets" only_if_exists = false,
         moveresize => b"_NET_WM_MOVERESIZE" only_if_exists = false,
+        wine_hwnd_style => b"_WINE_HWND_STYLE" only_if_exists = false,
     }
 }
 
@@ -1436,14 +1452,6 @@ impl XConnection for RealConnection {
                 debug!("set {name} as primary output");
                 self.primary_output = output;
             }
-        } else {
-            let _ = self
-                .connection
-                .send_and_check_request(&xcb::randr::SetOutputPrimary {
-                    window,
-                    output: Xid::none(),
-                });
-            self.primary_output = Xid::none();
         }
     }
 

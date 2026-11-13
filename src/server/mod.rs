@@ -112,6 +112,7 @@ struct WindowAttributes {
     group: Option<x::Window>,
     decorations: Option<Decorations>,
     transient_for: Option<x::Window>,
+    wine: bool,
 }
 
 impl WindowAttributes {
@@ -129,6 +130,7 @@ struct WindowOutputOffset {
 #[derive(Debug)]
 struct WindowData {
     mapped: bool,
+    entered_output: bool,
     attrs: WindowAttributes,
     output_offset: WindowOutputOffset,
     activation_token: Option<String>,
@@ -138,6 +140,7 @@ impl WindowData {
     fn new(override_redirect: bool, dims: WindowDims, activation_token: Option<String>) -> Self {
         Self {
             mapped: false,
+            entered_output: false,
             attrs: WindowAttributes {
                 role: WindowRole::new_basic(override_redirect),
                 override_redirect,
@@ -757,6 +760,14 @@ impl<C: XConnection> ServerState<C> {
                 if has_take_focus {
                     self.connection.send_take_focus(window);
                 } else {
+                    // Keep the primary when refocusing the last focused toplevel, or while pinned.
+                    let output_name = if self.last_focused_toplevel == Some(window)
+                        || self.primary_pinned_by_others(window)
+                    {
+                        None
+                    } else {
+                        output_name
+                    };
                     self.connection.focus_window(window, output_name);
                     if !is_popup {
                         self.last_focused_toplevel = Some(window);
@@ -1005,6 +1016,28 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
 
         let attrs = &mut self.world.get::<&mut WindowData>(id).unwrap().attrs;
         attrs.has_take_focus = has_take_focus;
+    }
+
+    pub fn set_wine_window(&mut self, window: x::Window) {
+        let Some(id) = self.windows.get(&window).copied() else {
+            debug!("not marking unknown window {window:?} as Wine");
+            return;
+        };
+
+        self.world.get::<&mut WindowData>(id).unwrap().attrs.wine = true;
+    }
+
+    /// Whether a mapped X window other than `window` is fullscreen or from Wine.
+    fn primary_pinned_by_others(&self, window: x::Window) -> bool {
+        self.world
+            .query::<(&x::Window, &WindowData, Option<&SurfaceRole>)>()
+            .iter()
+            .any(|(_, (other, data, role))| {
+                *other != window
+                    && data.mapped
+                    && (data.attrs.wine
+                        || matches!(role, Some(SurfaceRole::Toplevel(Some(t))) if t.fullscreen))
+            })
     }
 
     pub fn set_size_hints(&mut self, window: x::Window, hints: WmNormalHints) {
