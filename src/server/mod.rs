@@ -240,6 +240,8 @@ struct ToplevelData {
     toplevel: XdgToplevel,
     xdg: XdgSurfaceData,
     fullscreen: bool,
+    /// An X client asked for a fullscreen state change that no configure has answered yet.
+    fullscreen_requested: bool,
     decoration: decoration::DecorationsData,
 }
 
@@ -1204,12 +1206,12 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             return;
         };
 
-        let Some(role) = data.get::<&SurfaceRole>() else {
+        let Some(mut role) = data.get::<&mut SurfaceRole>() else {
             warn!("Tried to set window without role fullscreen: {window:?}");
             return;
         };
 
-        let SurfaceRole::Toplevel(Some(toplevel)) = &*role else {
+        let SurfaceRole::Toplevel(Some(toplevel)) = &mut *role else {
             warn!("Tried to set an unmapped toplevel or non toplevel fullscreen: {window:?}");
             return;
         };
@@ -1226,6 +1228,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
                 }
             }
         }
+        toplevel.fullscreen_requested = true;
     }
 
     pub fn set_transient_for(&mut self, window: x::Window, parent: x::Window) {
@@ -1589,6 +1592,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             },
             toplevel,
             fullscreen: false,
+            fullscreen_requested: false,
             decoration: DecorationsData {
                 wl: wl_decoration,
                 satellite: sat_decoration,

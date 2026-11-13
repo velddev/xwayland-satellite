@@ -18,7 +18,7 @@ use wayland_server::Resource;
 use wayland_server::protocol::{wl_output, wl_pointer};
 use xcb::{Xid, x};
 use xwayland_satellite as xwls;
-use xwayland_satellite::xstate::{MoveResizeDirection, WmSizeHintsFlags, WmState};
+use xwayland_satellite::xstate::{MoveResizeDirection, SetState, WmSizeHintsFlags, WmState};
 use xwls::timespec_from_millis;
 
 #[derive(Default)]
@@ -351,6 +351,8 @@ xcb::atoms_struct! {
         net_active_window => b"_NET_ACTIVE_WINDOW",
         wm_delete_window => b"WM_DELETE_WINDOW",
         net_wm_state => b"_NET_WM_STATE",
+        wm_fullscreen => b"_NET_WM_STATE_FULLSCREEN" only_if_exists = false,
+        wm_above => b"_NET_WM_STATE_ABOVE" only_if_exists = false,
         skip_taskbar => b"_NET_WM_STATE_SKIP_TASKBAR",
         transient_for => b"WM_TRANSIENT_FOR",
         clipboard => b"CLIPBOARD",
@@ -2573,4 +2575,76 @@ fn client_init_resize() {
         "Got wrong resizing edge: {:?}",
         data.resizing
     );
+}
+
+#[test]
+fn fullscreen_request_answered() {
+    let mut f = Fixture::new();
+    let mut connection = Connection::new(&f.display);
+
+    let window = connection.new_window(connection.root, 0, 0, 20, 20, false);
+    // satellite doesn't handle this state, so every write of _NET_WM_STATE must keep it.
+    connection.set_property(
+        window,
+        x::ATOM_ATOM,
+        connection.atoms.net_wm_state,
+        &[connection.atoms.wm_above],
+    );
+    let surface = f.map_as_toplevel(&mut connection, window);
+    connection.get_property_change_events(window);
+
+    // Asks for fullscreen and returns whether _NET_WM_STATE says the window got it.
+    let mut request_fullscreen = |f: &mut Fixture| {
+        connection.send_client_message(&x::ClientMessageEvent::new(
+            window,
+            connection.atoms.net_wm_state,
+            x::ClientMessageData::Data32([
+                SetState::Add as u32,
+                connection.atoms.wm_fullscreen.resource_id(),
+                0,
+                1,
+                0,
+            ]),
+        ));
+        f.wait_and_dispatch();
+
+        let notify = connection.await_property_notify();
+        assert_eq!(notify.window(), window);
+        assert_eq!(notify.atom(), connection.atoms.net_wm_state);
+        let reply = connection.get_reply(&x::GetProperty {
+            delete: false,
+            window,
+            property: connection.atoms.net_wm_state,
+            r#type: x::ATOM_ATOM,
+            long_offset: 0,
+            long_length: 10,
+        });
+        let states = reply.value::<x::Atom>();
+        assert!(
+            states.contains(&connection.atoms.wm_above),
+            "_NET_WM_STATE_ABOVE was removed: {states:?}"
+        );
+        states.contains(&connection.atoms.wm_fullscreen)
+    };
+    let is_fullscreen = |f: &Fixture| {
+        f.testwl
+            .get_surface_data(surface)
+            .unwrap()
+            .toplevel()
+            .states
+            .contains(&xdg_toplevel::State::Fullscreen)
+    };
+
+    // The compositor doesn't follow the request: the client must still get an answer.
+    f.testwl.ignore_set_fullscreen(true);
+    assert!(!request_fullscreen(&mut f));
+    assert!(!is_fullscreen(&f));
+
+    f.testwl.ignore_set_fullscreen(false);
+    assert!(request_fullscreen(&mut f));
+    assert!(is_fullscreen(&f));
+
+    // The window already has the state it asks for.
+    assert!(request_fullscreen(&mut f));
+    assert!(is_fullscreen(&f));
 }

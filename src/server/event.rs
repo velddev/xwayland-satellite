@@ -390,6 +390,7 @@ impl SurfaceEvents {
                     let prev_fs = toplevel.fullscreen;
                     toplevel.fullscreen =
                         states.contains(&(u32::from(xdg_toplevel::State::Fullscreen) as u8));
+                    let answers_request = std::mem::take(&mut toplevel.fullscreen_requested);
                     if toplevel.fullscreen != prev_fs {
                         state.connection.set_fullscreen(
                             *data.get::<&x::Window>().unwrap(),
@@ -398,6 +399,12 @@ impl SurfaceEvents {
                         if let Some(decorations) = toplevel.decoration.satellite.as_mut() {
                             decorations.handle_fullscreen(toplevel.fullscreen);
                         }
+                    } else if answers_request {
+                        // Answer the request even if the state didn't change; Wine waits for it.
+                        state.connection.set_fullscreen(
+                            *data.get::<&x::Window>().unwrap(),
+                            toplevel.fullscreen,
+                        );
                     }
                 };
 
