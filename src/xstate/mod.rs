@@ -1436,14 +1436,6 @@ impl XConnection for RealConnection {
                 debug!("set {name} as primary output");
                 self.primary_output = output;
             }
-        } else {
-            let _ = self
-                .connection
-                .send_and_check_request(&xcb::randr::SetOutputPrimary {
-                    window,
-                    output: Xid::none(),
-                });
-            self.primary_output = Xid::none();
         }
     }
 

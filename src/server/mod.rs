@@ -129,6 +129,7 @@ struct WindowOutputOffset {
 #[derive(Debug)]
 struct WindowData {
     mapped: bool,
+    entered_output: bool,
     attrs: WindowAttributes,
     output_offset: WindowOutputOffset,
     activation_token: Option<String>,
@@ -138,6 +139,7 @@ impl WindowData {
     fn new(override_redirect: bool, dims: WindowDims, activation_token: Option<String>) -> Self {
         Self {
             mapped: false,
+            entered_output: false,
             attrs: WindowAttributes {
                 role: WindowRole::new_basic(override_redirect),
                 override_redirect,
@@ -757,6 +759,12 @@ impl<C: XConnection> ServerState<C> {
                 if has_take_focus {
                     self.connection.send_take_focus(window);
                 } else {
+                    // Refocusing the last focused toplevel keeps the primary where it is.
+                    let output_name = if self.last_focused_toplevel == Some(window) {
+                        None
+                    } else {
+                        output_name
+                    };
                     self.connection.focus_window(window, output_name);
                     if !is_popup {
                         self.last_focused_toplevel = Some(window);

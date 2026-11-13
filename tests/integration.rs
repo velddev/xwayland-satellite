@@ -199,6 +199,43 @@ impl Fixture {
         Self::new_preset(|_| {})
     }
 
+    /// Two outputs, each paired with its RandR output.
+    #[track_caller]
+    fn new_with_two_outputs() -> (
+        Self,
+        Connection,
+        [(wl_output::WlOutput, xcb::randr::Output); 2],
+    ) {
+        let mut f = Self::new_preset(|testwl| {
+            testwl.new_output(); // WL-1
+            testwl.new_output(); // WL-2
+        });
+        let conn = Connection::new(&f.display);
+
+        let reply = conn.get_reply(&xcb::randr::GetScreenResources { window: conn.root });
+        let config_timestamp = reply.config_timestamp();
+        let outputs: Vec<_> = reply
+            .outputs()
+            .iter()
+            .copied()
+            .map(|output| {
+                let reply = conn.get_reply(&xcb::randr::GetOutputInfo {
+                    output,
+                    config_timestamp,
+                });
+                let name = std::str::from_utf8(reply.name()).unwrap();
+                (
+                    f.testwl
+                        .get_output(name)
+                        .unwrap_or_else(|| panic!("Couldn't find output {name}")),
+                    output,
+                )
+            })
+            .collect();
+        let outputs = outputs.try_into().expect("Expected two outputs");
+        (f, conn, outputs)
+    }
+
     #[track_caller]
     fn wait_and_dispatch(&mut self) {
         let mut pollfd = [self.pollfd.clone()];
@@ -679,6 +716,31 @@ impl Connection {
                 .expect("Failed to poll for event")
                 .is_none()
         );
+    }
+
+    #[track_caller]
+    fn get_screen_change_events(&self) {
+        self.send_and_check_request(&xcb::randr::SelectInput {
+            window: self.root,
+            enable: xcb::randr::NotifyMask::SCREEN_CHANGE,
+        })
+        .unwrap();
+    }
+
+    #[track_caller]
+    fn get_primary_output(&self) -> xcb::randr::Output {
+        self.get_reply(&xcb::randr::GetOutputPrimary { window: self.root })
+            .output()
+    }
+
+    #[track_caller]
+    fn await_primary_output(&mut self, output: xcb::randr::Output) {
+        while self.get_primary_output() != output {
+            match self.await_event() {
+                xcb::Event::RandR(xcb::randr::Event::ScreenChangeNotify(_)) => {}
+                other => panic!("Didn't get screen change event, instead got {other:?}"),
+            }
+        }
     }
 
     #[track_caller]
@@ -1643,32 +1705,12 @@ fn close_window() {
 }
 
 // TODO: figure out if the sleeps in this test can be dealt with...
+// (the primary staying put has no event to wait for)
 #[test]
 fn primary_output() {
-    let mut f = Fixture::new_preset(|testwl| {
-        testwl.new_output(); // WL-1
-        testwl.new_output(); // WL-2
-    });
-    let mut conn = Connection::new(&f.display);
-
-    let reply = conn.get_reply(&xcb::randr::GetScreenResources { window: conn.root });
-    let config_timestamp = reply.config_timestamp();
-    let mut it = reply.outputs().iter().copied().map(|output| {
-        let reply = conn.get_reply(&xcb::randr::GetOutputInfo {
-            output,
-            config_timestamp,
-        });
-        let name = std::str::from_utf8(reply.name()).unwrap();
-        (
-            f.testwl
-                .get_output(name)
-                .unwrap_or_else(|| panic!("Couldn't find output {name}")),
-            output,
-        )
-    });
-    let (wl_output1, output1) = it.next().expect("Couldn't find first output");
-    let (wl_output2, output2) = it.next().expect("Couldn't find second output");
-    assert_eq!(it.collect::<Vec<_>>(), vec![]);
+    let (mut f, mut conn, [(wl_output1, output1), (wl_output2, output2)]) =
+        Fixture::new_with_two_outputs();
+    conn.get_screen_change_events();
 
     let window1 = conn.new_window(conn.root, 0, 0, 20, 20, false);
     let surface1 = f.map_as_toplevel(&mut conn, window1);
@@ -1681,14 +1723,10 @@ fn primary_output() {
     f.wait_and_dispatch();
 
     f.testwl.focus_toplevel(surface1);
-    std::thread::sleep(std::time::Duration::from_millis(10));
-    let reply = conn.get_reply(&xcb::randr::GetOutputPrimary { window: conn.root });
-    assert_eq!(reply.output(), output1);
+    conn.await_primary_output(output1);
 
     f.testwl.focus_toplevel(surface2);
-    std::thread::sleep(std::time::Duration::from_millis(10));
-    let reply = conn.get_reply(&xcb::randr::GetOutputPrimary { window: conn.root });
-    assert_eq!(reply.output(), output2);
+    conn.await_primary_output(output2);
 
     let wl_output3 = f.create_output(24, 46);
     f.testwl.move_surface_to_output(surface2, &wl_output3);
@@ -1702,8 +1740,34 @@ fn primary_output() {
         .copied()
         .find(|o| ![output1, output2].contains(o))
         .unwrap();
-    let reply = conn.get_reply(&xcb::randr::GetOutputPrimary { window: conn.root });
-    assert_eq!(reply.output(), output3);
+    // The focused window changing outputs keeps the primary...
+    assert_eq!(conn.get_primary_output(), output2);
+
+    // ...and so do focus leaving X and the same window getting focus back.
+    f.testwl.unfocus_toplevel();
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    assert_eq!(conn.get_primary_output(), output2);
+
+    f.testwl.focus_toplevel(surface2);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    assert_eq!(conn.get_primary_output(), output2);
+
+    // Focusing another X toplevel still makes its output the primary.
+    f.testwl.focus_toplevel(surface1);
+    conn.await_primary_output(output1);
+
+    f.testwl.focus_toplevel(surface2);
+    conn.await_primary_output(output3);
+
+    // A new window focused before it enters an output keeps the primary until it enters one.
+    let window3 = conn.new_window(conn.root, 0, 0, 20, 20, false);
+    let surface3 = f.map_as_toplevel(&mut conn, window3);
+    f.testwl.focus_toplevel(surface3);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    assert_eq!(conn.get_primary_output(), output3);
+
+    f.testwl.move_surface_to_output(surface3, &wl_output1);
+    conn.await_primary_output(output1);
 }
 
 #[test]

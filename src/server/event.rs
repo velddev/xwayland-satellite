@@ -223,10 +223,19 @@ impl SurfaceEvents {
                         },
                         connection,
                     );
+                    // Only a window's first output can make it primary; later enters are moves.
+                    let first_output = !win_data.entered_output;
+                    win_data.entered_output = true;
                     if state.last_focused_toplevel == Some(*window) {
-                        let output = get_output_name(Some(&on_output), &state.world);
-                        debug!("focused window changed outputs - resetting primary output");
-                        connection.focus_window(*window, output);
+                        if first_output {
+                            let output = get_output_name(Some(&on_output), &state.world);
+                            debug!(
+                                "focused window entered its first output - setting primary output"
+                            );
+                            connection.focus_window(*window, output);
+                        } else {
+                            debug!("focused window changed outputs - keeping the primary output");
+                        }
                     }
 
                     if state.fractional_scale.is_none() {
