@@ -414,6 +414,7 @@ xcb::atoms_struct! {
         xsettings_setting => b"_XSETTINGS_SETTINGS",
         resource_manager => b"RESOURCE_MANAGER",
         moveresize => b"_NET_WM_MOVERESIZE",
+        wine_hwnd_style => b"_WINE_HWND_STYLE" only_if_exists = false,
     }
 }
 
@@ -1768,6 +1769,84 @@ fn primary_output() {
 
     f.testwl.move_surface_to_output(surface3, &wl_output1);
     conn.await_primary_output(output1);
+}
+
+#[test]
+fn primary_output_pinned_by_wine_window() {
+    let (mut f, mut conn, [(wl_output1, output1), (wl_output2, output2)]) =
+        Fixture::new_with_two_outputs();
+    conn.get_screen_change_events();
+
+    // A Wine window alone still sets the primary. Only the property's presence matters.
+    let wine = conn.new_window(conn.root, 0, 0, 20, 20, false);
+    conn.set_property(wine, x::ATOM_CARDINAL, conn.atoms.wine_hwnd_style, &[0u32]);
+    let wine_surface = f.map_as_toplevel(&mut conn, wine);
+    f.testwl.move_surface_to_output(wine_surface, &wl_output1);
+    conn.await_primary_output(output1);
+
+    // Another window entering its first output while focused keeps the primary...
+    let other = conn.new_window(conn.root, 0, 0, 20, 20, false);
+    let other_surface = f.map_as_toplevel(&mut conn, other);
+    f.testwl.move_surface_to_output(other_surface, &wl_output2);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    assert_eq!(conn.get_primary_output(), output1);
+
+    // ...and so does focus moving to it from another X toplevel.
+    f.testwl.focus_toplevel(wine_surface);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    f.testwl.focus_toplevel(other_surface);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    assert_eq!(conn.get_primary_output(), output1);
+
+    // Once the Wine window is gone, the primary follows focus again.
+    conn.unmap_window(wine);
+    let third = conn.new_window(conn.root, 0, 0, 20, 20, false);
+    let third_surface = f.map_as_toplevel(&mut conn, third);
+    f.testwl.move_surface_to_output(third_surface, &wl_output2);
+    conn.await_primary_output(output2);
+}
+
+#[test]
+fn primary_output_pinned_by_fullscreen_window() {
+    let (mut f, mut conn, [(wl_output1, output1), (wl_output2, output2)]) =
+        Fixture::new_with_two_outputs();
+    conn.get_screen_change_events();
+
+    let game = conn.new_window(conn.root, 0, 0, 20, 20, false);
+    let game_surface = f.map_as_toplevel(&mut conn, game);
+    f.testwl.move_surface_to_output(game_surface, &wl_output1);
+    conn.await_primary_output(output1);
+    f.testwl.configure_toplevel(
+        game_surface,
+        100,
+        100,
+        vec![
+            xdg_toplevel::State::Fullscreen,
+            xdg_toplevel::State::Activated,
+        ],
+    );
+    f.wait_and_dispatch();
+
+    let other = conn.new_window(conn.root, 0, 0, 20, 20, false);
+    let other_surface = f.map_as_toplevel(&mut conn, other);
+    f.testwl.move_surface_to_output(other_surface, &wl_output2);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    assert_eq!(conn.get_primary_output(), output1);
+
+    f.testwl.focus_toplevel(game_surface);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    f.testwl.focus_toplevel(other_surface);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    assert_eq!(conn.get_primary_output(), output1);
+
+    // Leaving fullscreen unpins it: focus moving between X toplevels moves the primary again.
+    f.testwl
+        .configure_toplevel(game_surface, 100, 100, vec![xdg_toplevel::State::Activated]);
+    f.wait_and_dispatch();
+    f.testwl.focus_toplevel(game_surface);
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    f.testwl.focus_toplevel(other_surface);
+    conn.await_primary_output(output2);
 }
 
 #[test]

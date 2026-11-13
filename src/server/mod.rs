@@ -112,6 +112,7 @@ struct WindowAttributes {
     group: Option<x::Window>,
     decorations: Option<Decorations>,
     transient_for: Option<x::Window>,
+    wine: bool,
 }
 
 impl WindowAttributes {
@@ -759,8 +760,10 @@ impl<C: XConnection> ServerState<C> {
                 if has_take_focus {
                     self.connection.send_take_focus(window);
                 } else {
-                    // Refocusing the last focused toplevel keeps the primary where it is.
-                    let output_name = if self.last_focused_toplevel == Some(window) {
+                    // Keep the primary when refocusing the last focused toplevel, or while pinned.
+                    let output_name = if self.last_focused_toplevel == Some(window)
+                        || self.primary_pinned_by_others(window)
+                    {
                         None
                     } else {
                         output_name
@@ -1013,6 +1016,28 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
 
         let attrs = &mut self.world.get::<&mut WindowData>(id).unwrap().attrs;
         attrs.has_take_focus = has_take_focus;
+    }
+
+    pub fn set_wine_window(&mut self, window: x::Window) {
+        let Some(id) = self.windows.get(&window).copied() else {
+            debug!("not marking unknown window {window:?} as Wine");
+            return;
+        };
+
+        self.world.get::<&mut WindowData>(id).unwrap().attrs.wine = true;
+    }
+
+    /// Whether a mapped X window other than `window` is fullscreen or from Wine.
+    fn primary_pinned_by_others(&self, window: x::Window) -> bool {
+        self.world
+            .query::<(&x::Window, &WindowData, Option<&SurfaceRole>)>()
+            .iter()
+            .any(|(_, (other, data, role))| {
+                *other != window
+                    && data.mapped
+                    && (data.attrs.wine
+                        || matches!(role, Some(SurfaceRole::Toplevel(Some(t))) if t.fullscreen))
+            })
     }
 
     pub fn set_size_hints(&mut self, window: x::Window, hints: WmNormalHints) {
