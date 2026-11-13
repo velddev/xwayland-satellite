@@ -770,39 +770,7 @@ impl<C: XConnection> ServerState<C> {
 
         self.handle_selection_events();
         self.handle_activations();
-        if let Err(e) = self.queue.flush() {
-            match e {
-                wayland_client::backend::WaylandError::Io(error)
-                    if error.kind() == std::io::ErrorKind::WouldBlock =>
-                {
-                    let fd = PollFd::new(&self.queue, PollFlags::OUT);
-                    match poll(
-                        &mut [fd],
-                        Some(&Timespec {
-                            tv_sec: 0,
-                            tv_nsec: Duration::from_millis(50).as_nanos() as _,
-                        }),
-                    ) {
-                        Ok(0) => {
-                            error!(
-                                "Failed to flush clientside events (timeout)! Will try again later."
-                            );
-                        }
-                        Ok(_) => {
-                            self.queue.flush().unwrap();
-                        }
-                        Err(e) => {
-                            error!(
-                                "Failed to flush clientside events ({e})! Will try again later."
-                            );
-                        }
-                    }
-                }
-                other => {
-                    panic!("Failed flushing clientside events: {other:#?}");
-                }
-            }
-        }
+        self.flush_queue();
     }
 
     fn close_x_window(&mut self, window: x::Window) {
@@ -1653,6 +1621,42 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
                 configured: false,
                 pending: None,
             },
+        }
+    }
+
+    fn flush_queue(&self) {
+        if let Err(e) = self.queue.flush() {
+            match e {
+                wayland_client::backend::WaylandError::Io(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    let fd = PollFd::new(&self.queue, PollFlags::OUT);
+                    match poll(
+                        &mut [fd],
+                        Some(&Timespec {
+                            tv_sec: 0,
+                            tv_nsec: Duration::from_millis(50).as_nanos() as _,
+                        }),
+                    ) {
+                        Ok(0) => {
+                            error!(
+                                "Failed to flush clientside events (timeout)! Will try again later."
+                            );
+                        }
+                        Ok(_) => {
+                            self.queue.flush().unwrap();
+                        }
+                        Err(e) => {
+                            error!(
+                                "Failed to flush clientside events ({e})! Will try again later."
+                            );
+                        }
+                    }
+                }
+                other => {
+                    panic!("Failed flushing clientside events: {other:#?}");
+                }
+            }
         }
     }
 }

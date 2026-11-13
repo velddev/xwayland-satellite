@@ -3358,3 +3358,37 @@ fn decorations_max_height_int_max() {
 /// See Pointer::handle_event for an explanation.
 #[test]
 fn popup_pointer_motion_workaround() {}
+
+#[test]
+fn shm_pool_destroy_with_full_socket() {
+    let (mut f, compositor) = TestFixture::new_with_compositor();
+    let fd = unsafe { BorrowedFd::borrow_raw(0) };
+    let pool = TestObject::<WlShmPool>::from_request(
+        &compositor.shm.obj,
+        Req::<WlShm>::CreatePool { fd, size: 1024 },
+    );
+    f.run();
+
+    // Fill satellite's socket to the compositor by not letting testwl read it.
+    loop {
+        for _ in 0..100 {
+            pool.send_request(Req::<WlShmPool>::Resize { size: 1024 })
+                .unwrap();
+        }
+        f.xwls_connection.flush().unwrap();
+        f.xwls_display.dispatch_clients(&mut *f.satellite).unwrap();
+        match f.satellite.queue.flush() {
+            Ok(()) => {}
+            Err(WaylandError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+            Err(e) => panic!("Failed to flush: {e:?}"),
+        }
+    }
+
+    pool.send_request(Req::<WlShmPool>::Destroy).unwrap();
+    f.run();
+
+    // Requests sent after the backlog should still arrive once testwl reads again.
+    let _surface = compositor.create_surface();
+    f.run();
+    assert_eq!(f.testwl.created_surfaces().len(), 1);
+}
